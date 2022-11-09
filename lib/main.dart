@@ -7,6 +7,7 @@ import 'package:amplify_authenticator/amplify_authenticator.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:amplify_storage_s3/amplify_storage_s3.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:faker/faker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_tweet_storm/amplifyconfiguration.dart';
@@ -68,12 +69,14 @@ class FeedScreen extends StatefulWidget {
 }
 
 class _FeedScreenState extends State<FeedScreen> {
+  static final _faker = Faker(seed: 0);
   late final _tweetController = TextEditingController();
   late final _filterStream = StreamController<String>.broadcast(sync: true);
   late final _filterController = TextEditingController();
   final _tweets = <Tweet>[];
   Uint8List? _attachedImage;
   StreamSubscription<Tweet>? _activeSubscription;
+  void Function()? _cancelStorm;
 
   @override
   void initState() {
@@ -157,7 +160,13 @@ class _FeedScreenState extends State<FeedScreen> {
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
-          content: Text(content),
+          content: Row(
+            children: [
+              Icon(type.icon, color: Colors.white),
+              const SizedBox(width: 10),
+              Text(content),
+            ],
+          ),
           backgroundColor: type.color,
         ),
       );
@@ -181,17 +190,21 @@ class _FeedScreenState extends State<FeedScreen> {
     }
   }
 
-  Future<void> _tweet() async {
+  Future<void> _tweet({
+    String? content,
+    Uint8List? imageBytes,
+  }) async {
     try {
       String? imageKey;
-      if (_attachedImage != null) {
+      imageBytes ??= _attachedImage;
+      if (imageBytes != null) {
         final session = await Amplify.Auth.fetchAuthSession(
           options: const CognitoSessionOptions(getAWSCredentials: true),
         ) as CognitoAuthSession;
         final identityId = session.identityId!;
         imageKey = '$identityId/${uuid()}';
         await Amplify.Storage.uploadData(
-          data: HttpPayload.bytes(_attachedImage!),
+          data: HttpPayload.bytes(imageBytes),
           key: imageKey,
         ).result;
       }
@@ -214,7 +227,7 @@ class _FeedScreenState extends State<FeedScreen> {
                 }
               ''',
               variables: {
-                'content': _tweetController.text,
+                'content': content ?? _tweetController.text,
                 'imageKey': imageKey,
               },
               decodePath: 'createTweet',
@@ -240,118 +253,177 @@ class _FeedScreenState extends State<FeedScreen> {
     }
   }
 
+  Future<void> _tweetStorm() async {
+    final cancelCompleter = Completer<void>();
+    unawaited(
+      cancelCompleter.future.then((_) {
+        setState(() => _cancelStorm = null);
+      }),
+    );
+    try {
+      setState(
+        () => _cancelStorm = () {
+          if (!cancelCompleter.isCompleted) cancelCompleter.complete();
+        },
+      );
+      while (!cancelCompleter.isCompleted) {
+        final dish = _faker.food.dish().toLowerCase();
+        logger.info('Generated dish: $dish');
+        final image = _faker.image.image(
+          width: 300,
+          height: 300,
+          keywords: dish.split(' ').toList(),
+          random: false,
+        );
+        logger.info('Generated image: $image');
+        final imageResp =
+            await AWSHttpRequest.get(Uri.parse(image)).send().response;
+        final imageBytes = Uint8List.fromList(await imageResp.bodyBytes);
+        await _tweet(
+          content: dish,
+          imageBytes: imageBytes,
+        );
+      }
+    } on Exception catch (e) {
+      logger.error('Error storming', e);
+    } finally {
+      if (!cancelCompleter.isCompleted) {
+        cancelCompleter.complete();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: PreferredSize(
         preferredSize: const Size(double.infinity, kToolbarHeight),
-        child: SizedBox(
-          height: kToolbarHeight,
-          child: Material(
-            elevation: 4,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _tweetController,
-                        decoration: InputDecoration(
-                          hintText: 'Content',
-                          suffix: _attachedImage == null
-                              ? null
-                              : Image.memory(
-                                  _attachedImage!,
-                                  cacheWidth: 30,
-                                  cacheHeight: 30,
-                                ),
+        child: SafeArea(
+          child: SizedBox(
+            height: kToolbarHeight,
+            child: Material(
+              elevation: 4,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _tweetController,
+                          decoration: InputDecoration(
+                            hintText: 'Content',
+                            suffix: _attachedImage == null
+                                ? null
+                                : Image.memory(
+                                    _attachedImage!,
+                                    cacheWidth: 30,
+                                    cacheHeight: 30,
+                                  ),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton.icon(
-                      onPressed: _attachImage,
-                      icon: const Icon(Icons.image),
-                      label: const Text('Attach Image'),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton.icon(
-                      onPressed: _tweet,
-                      icon: const Icon(Icons.send),
-                      label: const Text('Tweet'),
-                    ),
-                  ],
+                      const SizedBox(width: 10),
+                      ElevatedButton.icon(
+                        onPressed: _attachImage,
+                        icon: const Icon(Icons.image),
+                        label: const Text('Attach Image'),
+                      ),
+                      const SizedBox(width: 10),
+                      ElevatedButton.icon(
+                        onPressed: _tweet,
+                        icon: const Icon(Icons.send),
+                        label: const Text('Tweet'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
-      body: Center(
-        child: Stack(
-          alignment: Alignment.bottomCenter,
-          children: [
-            ListView.separated(
-              itemCount: _tweets.length,
-              itemBuilder: (context, index) {
-                final tweet = _tweets[index];
-                final imageKey = tweet.imageKey;
-                final time =
-                    timeago.format(tweet.createdAt!.getDateTimeInUtc());
-                if (imageKey == null) {
-                  return ListTile(
+      body: SafeArea(
+        child: Center(
+          child: Stack(
+            alignment: Alignment.bottomCenter,
+            children: [
+              ListView.separated(
+                itemCount: _tweets.length,
+                separatorBuilder: (_, __) => const Divider(),
+                itemBuilder: (context, index) {
+                  final tweet = _tweets[index];
+                  final imageKey = tweet.imageKey;
+                  final time =
+                      timeago.format(tweet.createdAt!.getDateTimeInUtc());
+                  if (imageKey == null) {
+                    return ListTile(
+                      title: Text(tweet.content),
+                      subtitle:
+                          tweet.author == null ? null : Text(tweet.author!),
+                      trailing: Text(time),
+                    );
+                  }
+                  return ExpansionTile(
                     title: Text(tweet.content),
                     subtitle: tweet.author == null ? null : Text(tweet.author!),
                     trailing: Text(time),
-                  );
-                }
-                return ExpansionTile(
-                  title: Text(tweet.content),
-                  subtitle: tweet.author == null ? null : Text(tweet.author!),
-                  trailing: Text(time),
-                  childrenPadding: const EdgeInsets.all(8),
-                  children: [
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 300),
-                      child: FutureBuilder(
-                        future: Amplify.Storage.getUrl(key: imageKey).result,
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return const CircularProgressIndicator();
-                          }
-                          final imageUrl = snapshot.data!.url;
-                          return CachedNetworkImage(
-                            imageUrl: imageUrl.toString(),
-                            cacheKey: imageKey,
-                          );
-                        },
+                    childrenPadding: const EdgeInsets.all(8),
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 300),
+                        child: FutureBuilder(
+                          future: Amplify.Storage.getUrl(key: imageKey).result,
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const CircularProgressIndicator();
+                            }
+                            final imageUrl = snapshot.data!.url;
+                            return CachedNetworkImage(
+                              imageUrl: imageUrl.toString(),
+                              cacheKey: imageKey,
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
-              separatorBuilder: (_, __) => const Divider(),
-            ),
-            Positioned(
-              width: 200,
-              height: 50,
-              bottom: 0,
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: TextField(
-                    controller: _filterController,
-                    decoration: const InputDecoration(
-                      hintText: 'Subscription Filter',
+                    ],
+                  );
+                },
+              ),
+              Positioned(
+                width: 200,
+                height: 50,
+                bottom: 10,
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: TextField(
+                      controller: _filterController,
+                      decoration: const InputDecoration(
+                        hintText: 'Subscription Filter',
+                      ),
                     ),
                   ),
                 ),
-              ),
-            )
-          ],
+              )
+            ],
+          ),
         ),
       ),
+      floatingActionButton: _cancelStorm == null
+          ? FloatingActionButton(
+              onPressed: _tweetStorm,
+              tooltip: 'Tweet Storm',
+              backgroundColor: Colors.lightBlue,
+              child: const Icon(Icons.storm),
+            )
+          : FloatingActionButton(
+              onPressed: _cancelStorm,
+              tooltip: 'Cancel Storm',
+              backgroundColor: Colors.red,
+              child: const Icon(Icons.stop),
+            ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
     );
   }
 }
