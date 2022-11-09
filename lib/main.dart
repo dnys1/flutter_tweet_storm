@@ -69,7 +69,7 @@ class FeedScreen extends StatefulWidget {
 }
 
 class _FeedScreenState extends State<FeedScreen> {
-  static final _faker = Faker(seed: 0);
+  static final _faker = Faker(seed: 2);
   late final _tweetController = TextEditingController();
   late final _filterStream = StreamController<String>.broadcast(sync: true);
   late final _filterController = TextEditingController();
