@@ -1,0 +1,12 @@
+{
+  "AppSyncApiName": "fluttertweetstorm",
+  "DynamoDBBillingMode": "PAY_PER_REQUEST",
+  "DynamoDBEnableServerSideEncryption": false,
+  "AuthCognitoUserPoolId": {
+    "Fn::GetAtt": [
+      "authfluttertweetstormc4c5c4c1",
+      "Outputs.UserPoolId"
+    ]
+  },
+  "AuthModeLastUpdated": "2022-11-08T19:26:28.724Z"
+}

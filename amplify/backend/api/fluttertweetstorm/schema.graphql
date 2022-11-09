@@ -1,0 +1,12 @@
+type Tweet @model @auth(rules: [
+  { allow: owner, ownerField: "author" }  
+  { allow: private, provider: iam, operations: [read] }
+]){
+  author: String
+    @auth(rules: [
+      { allow: owner, ownerField: "author", operations: [read, create, delete] }
+      { allow: private, provider: iam, operations: [read] }
+    ])
+  content: String!
+  imageKey: String
+}

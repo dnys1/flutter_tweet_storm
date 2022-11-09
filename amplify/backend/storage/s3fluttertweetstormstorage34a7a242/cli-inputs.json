@@ -1,0 +1,12 @@
+{
+  "resourceName": "s3fluttertweetstormstorage34a7a242",
+  "bucketName": "fluttertweetstorm-storage-34a7a242",
+  "policyUUID": "c6311a0e",
+  "storageAccess": "auth",
+  "guestAccess": [],
+  "authAccess": [
+    "CREATE_AND_UPDATE",
+    "READ",
+    "DELETE"
+  ]
+}
