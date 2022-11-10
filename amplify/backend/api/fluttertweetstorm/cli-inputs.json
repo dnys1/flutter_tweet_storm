@@ -4,12 +4,12 @@
     "apiName": "fluttertweetstorm",
     "serviceName": "AppSync",
     "defaultAuthType": {
-      "mode": "AMAZON_COGNITO_USER_POOLS",
-      "cognitoUserPoolId": "authfluttertweetstormc4c5c4c1"
+      "mode": "AWS_IAM"
     },
     "additionalAuthTypes": [
       {
-        "mode": "AWS_IAM"
+        "mode": "AMAZON_COGNITO_USER_POOLS",
+        "cognitoUserPoolId": "authfluttertweetstormc4c5c4c1"
       }
     ],
     "conflictResolution": {}

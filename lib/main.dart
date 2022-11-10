@@ -195,8 +195,10 @@ class _FeedScreenState extends State<FeedScreen> {
     Uint8List? imageBytes,
   }) async {
     try {
-      String? imageKey;
+      content ??= _tweetController.text;
       imageBytes ??= _attachedImage;
+
+      String? imageKey;
       if (imageBytes != null) {
         final session = await Amplify.Auth.fetchAuthSession(
           options: const CognitoSessionOptions(getAWSCredentials: true),
@@ -227,9 +229,10 @@ class _FeedScreenState extends State<FeedScreen> {
                 }
               ''',
               variables: {
-                'content': content ?? _tweetController.text,
+                'content': content,
                 'imageKey': imageKey,
               },
+              authorizationMode: APIAuthorizationType.userPools,
               decodePath: 'createTweet',
               modelType: Tweet.classType,
             ),
@@ -269,20 +272,8 @@ class _FeedScreenState extends State<FeedScreen> {
       while (!cancelCompleter.isCompleted) {
         final dish = _faker.food.dish().toLowerCase();
         logger.info('Generated dish: $dish');
-        final image = _faker.image.image(
-          width: 300,
-          height: 300,
-          keywords: dish.split(' ').toList(),
-          random: false,
-        );
-        logger.info('Generated image: $image');
-        final imageResp =
-            await AWSHttpRequest.get(Uri.parse(image)).send().response;
-        final imageBytes = Uint8List.fromList(await imageResp.bodyBytes);
-        await _tweet(
-          content: dish,
-          imageBytes: imageBytes,
-        );
+        await _tweet(content: dish);
+        await Future<void>.delayed(const Duration(milliseconds: 500));
       }
     } on Exception catch (e) {
       logger.error('Error storming', e);
@@ -350,7 +341,13 @@ class _FeedScreenState extends State<FeedScreen> {
             children: [
               ListView.separated(
                 itemCount: _tweets.length,
-                separatorBuilder: (_, __) => const Divider(),
+                separatorBuilder: (_, index) {
+                  final tweet = _tweets[index];
+                  final imageKey = tweet.imageKey;
+                  return imageKey == null
+                      ? const Divider()
+                      : const SizedBox.shrink();
+                },
                 itemBuilder: (context, index) {
                   final tweet = _tweets[index];
                   final imageKey = tweet.imageKey;
@@ -365,6 +362,8 @@ class _FeedScreenState extends State<FeedScreen> {
                     );
                   }
                   return ExpansionTile(
+                    initiallyExpanded: true,
+                    textColor: Colors.black,
                     title: Text(tweet.content),
                     subtitle: tweet.author == null ? null : Text(tweet.author!),
                     trailing: Text(time),
